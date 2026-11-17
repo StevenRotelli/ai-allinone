@@ -53,5 +53,15 @@ link "$VOL/workflows" /opt/comfyui/user/default/workflows
 link "$VOL/inputs"    /opt/comfyui/input
 link "$VOL/outputs"   /opt/comfyui/output
 
+# FaceFusion downloads its model set into .assets inside its own source tree.
+# That is the container disk, and `facefusion.py force-download` fetched 39 GB
+# of it on pod sy3az8qk25olqk — against a 60 GB container disk, with the models
+# thrown away on every pod teardown. Models are volume data by the rule at the
+# top of the Dockerfile, so .assets belongs on the volume like everything else.
+link "$VOL/models/facefusion" /opt/facefusion/.assets
+
+# Same reasoning for DFL: a trained model must outlive the pod that trained it.
+link "$VOL/dfl/models" /opt/dfl/workspace_models
+
 echo "  volume ready at $VOL"
 df -h "$VOL" 2>/dev/null | tail -1 | sed 's/^/  /'

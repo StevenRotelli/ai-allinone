@@ -19,6 +19,19 @@ ARG CUDA_VARIANT=cu128
 ARG COMFYUI_REF=master
 ARG FACEFUSION_REF=7247081
 ARG DFL_REF=a9f29b7
+# onnxruntime-gpu MUST come from Microsoft's cuda-12 feed AND be pinned, and the
+# feed must be the ONLY index. That feed's newest build is 1.29.0; PyPI has
+# 1.32.0, which is built for CUDA 13. pip takes the highest version across all
+# indexes, so the old `--extra-index-url https://pypi.org/simple` here silently
+# won with PyPI's CUDA-13 wheel on a CUDA-12.8 base. The damage was invisible to
+# get_available_providers() (CUDAExecutionProvider is compiled in and still
+# listed) and only showed up when a real InferenceSession was created:
+#   libcublasLt.so.13: cannot open shared object file
+#   Failed to create CUDAExecutionProvider. Require cuDNN 9.* and CUDA 13.*
+#   session providers: ['CPUExecutionProvider']
+# i.e. FaceFusion silently on CPU. Caught on pod sy3az8qk25olqk.
+ARG ORT_VERSION=1.29.0
+ARG ORT_INDEX=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -63,14 +76,13 @@ RUN pip freeze | grep -E "^(torch|torchvision|torchaudio)==" > /torch-constraint
     && cat /torch-constraint.txt
 ENV PIP_CONSTRAINT=/torch-constraint.txt
 
-# onnxruntime-gpu for CUDA 12.x comes from Microsoft's own index. The PyPI
-# "onnxruntime-gpu" is built against a different CUDA and falls back to CPU
-# silently — the detection and swap stages then run at a fraction of speed with
-# no error to tell you why.
+# onnx itself is an ordinary PyPI package; only onnxruntime-gpu is special.
+RUN --mount=type=cache,target=/root/.cache/pip pip install onnx
+# --no-deps because the feed carries no dependency wheels; ort's requirements
+# (flatbuffers, numpy, packaging, protobuf) are already satisfied above, and
+# adding PyPI as a fallback index is exactly the mistake described at ORT_INDEX.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install onnxruntime-gpu onnx \
-      --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ \
-      --extra-index-url https://pypi.org/simple
+    pip install --no-deps --index-url ${ORT_INDEX} onnxruntime-gpu==${ORT_VERSION}
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
@@ -110,9 +122,7 @@ RUN set -eux; cd /opt/comfyui/custom_nodes; \
 # which clobbers the CUDA-12 build installed above. Reassert it last.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip uninstall -y onnxruntime onnxruntime-gpu || true; \
-    pip install onnxruntime-gpu \
-      --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ \
-      --extra-index-url https://pypi.org/simple
+    pip install --no-deps --index-url ${ORT_INDEX} onnxruntime-gpu==${ORT_VERSION}
 
 # ------------------------------------------------------------------- facefusion
 # Installed as an importable package: ai/pipeline imports `facefusion` directly,
@@ -125,9 +135,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     grep -viE '^\s*onnxruntime' /opt/facefusion/requirements.txt > /tmp/ff_req.txt \
     && pip install -r /tmp/ff_req.txt \
     && pip uninstall -y onnxruntime onnxruntime-gpu || true; \
-    pip install onnxruntime-gpu \
-      --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ \
-      --extra-index-url https://pypi.org/simple
+    pip install --no-deps --index-url ${ORT_INDEX} onnxruntime-gpu==${ORT_VERSION}
 # Deliberately narrow: /opt/facefusion holds source only, no site-packages and
 # no torch, so it cannot shadow anything. PYTHONPATH pointing at a directory
 # that pip installs into is what caused the previous setup to shadow the
@@ -178,7 +186,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
-COPY src/verify_imports.py /opt/bin/verify_imports.py
+COPY src/verify_imports.py src/check_ort_cuda.sh /opt/bin/
 
 # Every pipeline the image exists to run is asserted here. The first version of
 # this layer checked only torch/ort/cv2/ffmpeg and therefore passed a build in
@@ -187,6 +195,8 @@ RUN set -eux; \
     python -c "import torch; assert torch.version.cuda, 'no CUDA in torch'; print('torch', torch.__version__, torch.version.cuda)"; \
     python -c "import torch, sys; print('torch from', torch.__file__)"; \
     python -c "import onnxruntime as o; ps=o.get_available_providers(); print('ort', o.__version__, ps); assert 'CUDAExecutionProvider' in ps, 'ort lost CUDA'"; \
+    python -c "import onnxruntime as o, sys; assert o.__version__ == '${ORT_VERSION}', 'ort is %s, not the pinned CUDA-12 build' % o.__version__"; \
+    bash /opt/bin/check_ort_cuda.sh; \
     python -c "import cv2, numpy, scipy, PIL, yaml; print('pipeline deps ok')"; \
     ffmpeg -version | head -1; \
     cd /opt/facefusion && python -c "import facefusion; print('facefusion import ok')"; \
