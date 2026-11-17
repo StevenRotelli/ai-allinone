@@ -141,11 +141,17 @@ ENV PYTHONPATH=/opt/facefusion
 # failure: the old `pip install -e /opt/sam2 || pip install /opt/sam2 || true`
 # failed on a missing hydra and `|| true` swallowed it, leaving an /opt/sam2
 # that looked installed and imported nowhere. Verified on pod sy3az8qk25olqk.
+# MatAnyone gets no pip install, deliberately. It has no requirements.txt (the
+# old line here hid that behind `[ -f ... ] || true`, so nothing was ever
+# installed from it), and its pyproject.toml declares the training and GUI
+# stack — PySide6, gradio, cchardet, netifaces, pycocotools, a git-sourced
+# thinplate — for an inference entrypoint that imports none of it. That is
+# hundreds of megabytes plus cchardet, which does not build on current Python.
+# Checked on pod sy3az8qk25olqk: inference_matanyone.py's top-level imports are
+# PIL, cv2, imageio, numpy, torch, tqdm and its own package, all already
+# present. The verify layer below asserts exactly that, which is a tighter
+# contract than installing a requirements file would have been.
 RUN git clone --depth 1 https://github.com/pq-yang/MatAnyone.git /opt/matanyone
-RUN --mount=type=cache,target=/root/.cache/pip \
-    set -eux; \
-    grep -viE '^\s*(torch|torchvision|torchaudio)' /opt/matanyone/requirements.txt > /tmp/ma.txt; \
-    pip install -r /tmp/ma.txt
 
 # ------------------------------------------------- DeepFaceLab-Revamped (DFM)
 # CUDA-only, no Metal path, which is the whole reason training is a rented-GPU
@@ -172,6 +178,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
+COPY src/verify_imports.py /opt/bin/verify_imports.py
+
 # Every pipeline the image exists to run is asserted here. The first version of
 # this layer checked only torch/ort/cv2/ffmpeg and therefore passed a build in
 # which DeepFaceLab and sam2 were both broken. Nothing below may use `|| true`.
@@ -183,6 +191,7 @@ RUN set -eux; \
     ffmpeg -version | head -1; \
     cd /opt/facefusion && python -c "import facefusion; print('facefusion import ok')"; \
     cd /opt/matanyone && python -c "import matanyone; print('matanyone import ok')"; \
+    python /opt/bin/verify_imports.py /opt/matanyone/inference_matanyone.py; \
     cd /opt/dfl && python main.py --help > /tmp/dfl.txt; \
     grep -q exportdfm /tmp/dfl.txt; grep -q train /tmp/dfl.txt; \
     echo "dfl main.py ok (train + exportdfm present)"; \
