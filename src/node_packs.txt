@@ -1,0 +1,27 @@
+# ComfyUI custom node packs baked into the image, one git URL per line.
+# Baked, not boot-cloned: a pod must never fail to start because GitHub is
+# unreachable, and a pack must never move without a rebuild and a new tag.
+https://github.com/Comfy-Org/ComfyUI-Manager.git
+https://github.com/kijai/ComfyUI-KJNodes.git
+https://github.com/rgthree/rgthree-comfy.git
+https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
+https://github.com/yolain/ComfyUI-Easy-Use.git
+https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git
+https://github.com/cubiq/ComfyUI_essentials.git
+https://github.com/chrisgoringe/cg-use-everywhere.git
+https://github.com/Fannovel16/ComfyUI-Frame-Interpolation.git
+https://github.com/Fannovel16/comfyui_controlnet_aux.git
+https://github.com/ssitu/ComfyUI_UltimateSDUpscale.git
+https://github.com/JPS-GER/ComfyUI_JPS-Nodes.git
+https://github.com/ClownsharkBatwing/RES4LYF.git
+https://github.com/city96/ComfyUI-GGUF.git
+https://github.com/kijai/ComfyUI-Florence2.git
+https://github.com/kijai/ComfyUI-segment-anything-2.git
+https://github.com/kijai/ComfyUI-WanAnimatePreprocess.git
+https://github.com/kijai/ComfyUI-WanVideoWrapper.git
+https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3.git
+https://github.com/Hearmeman24/ComfyUI-MiniMaxRefPack.git
+https://github.com/Hearmeman24/ComfyUI-QwenImageRefPack.git
+https://github.com/Hearmeman24/ComfyUI-OpenRouter-Simple.git
+https://github.com/MoonGoblinDev/Civicomfy.git
+https://github.com/hayden-cn/ComfyUI-Model-Manager.git

@@ -1,0 +1,15 @@
+{
+  "comment": "Every upstream ref this image builds from. Bump here, nowhere else.",
+  "cuda_base":   "nvidia/cuda:12.8.1-cudnn-devel-ubuntu24.04",
+  "cuda_variant": "cu128",
+  "torch":        "2.8.0",
+  "torchvision":  "0.23.0",
+  "torchaudio":   "2.8.0",
+  "comfyui_ref":  "master",
+  "facefusion_ref": "7247081",
+  "dfl_repo":     "https://github.com/Cioscos/DeepFaceLab-Revamped",
+  "dfl_ref":      "a9f29b7",
+  "sam2_ref":     "main",
+  "matanyone_ref":"main",
+  "ffmpeg":       "static-gpl from BtbN (NOT apt: apt 4.4.2 renders silently-black video)"
+}
