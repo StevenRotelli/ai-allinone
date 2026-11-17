@@ -6,7 +6,15 @@
 # up so the log is readable; a crash-loop buries the reason.
 set -u
 
-log() { echo "[$(date -u +%H:%M:%S)] $*"; }
+# Logged to stdout (RunPod's web console) AND to the volume, because the jupyter
+# token is printed here and the web console is the only other place it appears.
+# Lines emitted before volume_init.sh has made the directory just go to stdout.
+BOOTLOG=/workspace/logs/boot.log
+log() {
+  local line="[$(date -u +%H:%M:%S)] $*"
+  echo "$line"
+  if [ -d /workspace/logs ]; then echo "$line" >> "$BOOTLOG" 2>/dev/null || true; fi
+}
 
 log "=== ai-allinone ==="
 log "comfyui    $(cat /comfyui-ref.txt 2>/dev/null | cut -c1-12)"
@@ -18,6 +26,32 @@ log "gpu        $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 # --- volume -----------------------------------------------------------------
 log "--- volume ---"
 VOL=/workspace /opt/bin/volume_init.sh
+
+# --- environment for ssh sessions -------------------------------------------
+# sshd does not pass its own environment to a session; it builds a fresh one.
+# Without this, `ssh pod python ...` finds no python at all: /opt/venv/bin is
+# absent from PATH and PIP_CONSTRAINT/PYTHONPATH/HF_TOKEN are unset, so every
+# interactive or scripted ssh session sees a different environment from the one
+# the services run in. /etc/environment is the right lever because PAM's
+# pam_env reads it for BOTH interactive logins and `ssh host '<cmd>'`, which
+# /etc/profile.d alone does not cover (a non-interactive bash sources nothing).
+# Verified on pod sy3az8qk25olqk: UsePAM yes, and python resolved afterwards.
+# Mode 600: this file carries the CivitAI and HF tokens, and pam_env reads it
+# as root during session setup, so root-only is sufficient and correct.
+: > /etc/environment
+chmod 600 /etc/environment
+for v in PATH VIRTUAL_ENV PIP_CONSTRAINT PYTHONPATH HF_HOME \
+         CIVITAI_API_KEY HF_TOKEN HUGGING_FACE_HUB_TOKEN \
+         HF_HUB_ENABLE_HF_TRANSFER RUNPOD_POD_ID; do
+  eval "val=\${$v:-}"
+  [ -n "$val" ] && printf '%s=%s\n' "$v" "$val" >> /etc/environment
+done
+# Interactive shells get a friendlier landing too.
+cat > /etc/profile.d/ai-allinone.sh <<'PROF'
+[ -f /etc/environment ] && set -a && . /etc/environment && set +a
+cd /workspace 2>/dev/null || true
+PROF
+log "environment exported to ssh sessions ($(wc -l < /etc/environment) vars)"
 
 # --- ssh (RunPod injects PUBLIC_KEY) ----------------------------------------
 if [ -n "${PUBLIC_KEY:-}" ]; then
@@ -91,6 +125,8 @@ fi
 log "--- ready; tailing logs ---"
 # Never exit: keep the container alive so a dead service leaves a readable log
 # instead of a restart loop.
-touch /workspace/logs/comfyui.log
-tail -F /workspace/logs/*.log 2>/dev/null &
+# Service logs only — tailing boot.log would echo this script's own output back.
+touch /workspace/logs/comfyui.log /workspace/logs/jupyter.log
+tail -F /workspace/logs/comfyui.log /workspace/logs/jupyter.log \
+        /workspace/logs/facefusion.log 2>/dev/null &
 while true; do sleep 300; done

@@ -135,34 +135,58 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 ENV PYTHONPATH=/opt/facefusion
 
 # ------------------------------------------------------- matting + segmentation
-RUN git clone --depth 1 https://github.com/pq-yang/MatAnyone.git /opt/matanyone \
- && git clone --depth 1 https://github.com/facebookresearch/sam2.git /opt/sam2
+# No standalone sam2 clone here. ComfyUI-segment-anything-2 vendors its own
+# sam2/ package and sam2_configs/, and a grep for "import sam2" across all 26
+# node packs returns nothing — so a second copy bought us only a silent
+# failure: the old `pip install -e /opt/sam2 || pip install /opt/sam2 || true`
+# failed on a missing hydra and `|| true` swallowed it, leaving an /opt/sam2
+# that looked installed and imported nowhere. Verified on pod sy3az8qk25olqk.
+RUN git clone --depth 1 https://github.com/pq-yang/MatAnyone.git /opt/matanyone
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -e /opt/sam2 || pip install /opt/sam2 || true; \
-    [ -f /opt/matanyone/requirements.txt ] && \
-      ( grep -viE '^\s*(torch|torchvision|torchaudio)' /opt/matanyone/requirements.txt > /tmp/ma.txt; \
-        pip install -r /tmp/ma.txt ) || true
+    set -eux; \
+    grep -viE '^\s*(torch|torchvision|torchaudio)' /opt/matanyone/requirements.txt > /tmp/ma.txt; \
+    pip install -r /tmp/ma.txt
 
 # ------------------------------------------------- DeepFaceLab-Revamped (DFM)
 # CUDA-only, no Metal path, which is the whole reason training is a rented-GPU
-# job. install.sh is uv-managed and self-contained; it relocates the real code
-# to _internal/DeepFaceLab. Flags: --yes --no-pretrain are the non-interactive
-# ones (install.sh forwards "$@"). Logs and comments are in Italian.
+# job.
+#
+# install.sh is NOT used. It is uv-managed and self-contained: it downloads its
+# own CPython 3.11 and its own torch, then demands 15 GB free. On the GitHub
+# hosted runner that preflight failed with "spazio insufficiente in /opt/dfl:
+# 7.5 GB liberi, ne servono almeno 15.0 GB" and the old `|| echo WARN` here
+# swallowed the failure — the image shipped with a bare git clone whose
+# main.py died on `No module named 'colorama'`. Found on pod sy3az8qk25olqk.
+#
+# The repo already separates its deps: requirements/base.txt is the real list
+# (colorama, onnx, scikit-image, numexpr, pyqt5, pillow, ...) while cuda.txt
+# holds ONLY torch==2.13.0 from the cu130 index. We already have CUDA torch, so
+# base.txt is installed and cuda.txt is skipped outright. Measured on the pod:
+# 4 seconds, 7 small wheels, torch untouched at 2.8.0+cu128. PIP_CONSTRAINT
+# would reject that torch 2.13.0 regardless, which is the point of pinning it.
 RUN git clone https://github.com/Cioscos/DeepFaceLab-Revamped.git /opt/dfl \
     && cd /opt/dfl && git checkout ${DFL_REF} \
     && git rev-parse HEAD > /dfl-ref.txt
-RUN cd /opt/dfl && (bash install.sh --no-pretrain --yes || \
-      echo "WARN: DFL install.sh returned non-zero; see /dfl-install.log") 2>&1 \
-      | tee /dfl-install.log | tail -30
+RUN --mount=type=cache,target=/root/.cache/pip \
+    set -eux; cd /opt/dfl; pip install -r requirements/base.txt
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
+# Every pipeline the image exists to run is asserted here. The first version of
+# this layer checked only torch/ort/cv2/ffmpeg and therefore passed a build in
+# which DeepFaceLab and sam2 were both broken. Nothing below may use `|| true`.
 RUN set -eux; \
     python -c "import torch; assert torch.version.cuda, 'no CUDA in torch'; print('torch', torch.__version__, torch.version.cuda)"; \
     python -c "import torch, sys; print('torch from', torch.__file__)"; \
     python -c "import onnxruntime as o; ps=o.get_available_providers(); print('ort', o.__version__, ps); assert 'CUDAExecutionProvider' in ps, 'ort lost CUDA'"; \
     python -c "import cv2, numpy, scipy, PIL, yaml; print('pipeline deps ok')"; \
-    ffmpeg -version | head -1
+    ffmpeg -version | head -1; \
+    cd /opt/facefusion && python -c "import facefusion; print('facefusion import ok')"; \
+    cd /opt/matanyone && python -c "import matanyone; print('matanyone import ok')"; \
+    cd /opt/dfl && python main.py --help > /tmp/dfl.txt; \
+    grep -q exportdfm /tmp/dfl.txt; grep -q train /tmp/dfl.txt; \
+    echo "dfl main.py ok (train + exportdfm present)"; \
+    cd /opt/comfyui && python -c "import folder_paths; print('comfyui importable')"
 
 COPY src/start.sh src/volume_init.sh /opt/bin/
 RUN chmod +x /opt/bin/start.sh /opt/bin/volume_init.sh
