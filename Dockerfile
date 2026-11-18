@@ -47,7 +47,23 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       build-essential pkg-config \
       libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 \
       openssh-server rsync tmux nano jq procps \
+      fonts-dejavu-core fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
+
+# Comfyroll's text nodes read the font list with a NON-RECURSIVE
+# os.listdir("/usr/share/fonts/truetype") inside INPUT_TYPES, with no try/except
+# (nodes/nodes_graphics_text.py). The image shipped zero fonts, so that raised
+# FileNotFoundError *while ComfyUI was answering /object_info*, and the node was
+# dropped - `CR Select Font` never appeared in the UI.
+#
+# apt installs into subdirectories (truetype/dejavu/, truetype/liberation/),
+# which that non-recursive listdir cannot see, so surface the .ttf files one
+# level up as symlinks. Costs nothing and makes the node work as written.
+# Asserted in the verify stage by check_fonts.py.
+RUN set -eux; \
+    mkdir -p /usr/share/fonts/truetype; \
+    find /usr/share/fonts -name '*.ttf' -not -path '/usr/share/fonts/truetype/*.ttf' \
+      -exec sh -c 'for f; do ln -sf "$f" "/usr/share/fonts/truetype/$(basename "$f")"; done' _ {} +
 
 # ffmpeg: a STATIC build, never apt's.
 # apt on 22.04/24.04 gives ffmpeg 4.4.2, which renders silently-black video that
@@ -231,7 +247,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
-COPY src/verify_imports.py src/check_ort_cuda.sh src/check_node_packs.py src/check_opencv.py /opt/bin/
+COPY src/verify_imports.py src/check_ort_cuda.sh src/check_node_packs.py src/check_opencv.py src/check_fonts.py /opt/bin/
 
 # Every pipeline the image exists to run is asserted here. The first version of
 # this layer checked only torch/ort/cv2/ffmpeg and therefore passed a build in
@@ -244,6 +260,7 @@ RUN set -eux; \
     bash /opt/bin/check_ort_cuda.sh; \
     python -c "import cv2, numpy, scipy, PIL, yaml; print('pipeline deps ok')"; \
     python /opt/bin/check_opencv.py; \
+    python /opt/bin/check_fonts.py; \
     ffmpeg -version | head -1; \
     cd /opt/facefusion && python -c "import facefusion; print('facefusion import ok')"; \
     cd /opt/matanyone && python -c "import matanyone; print('matanyone import ok')"; \
