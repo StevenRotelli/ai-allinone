@@ -114,9 +114,24 @@ RUN set -eux; cd /opt/comfyui/custom_nodes; \
       echo "--- deps: $(dirname "$req")"; \
       grep -vE '^\s*(#|-e |git\+|https?://)' "$req" \
         | grep -viE '^\s*(torch|torchvision|torchaudio)\s*([;<>=!].*)?$' \
+        | grep -viE '^\s*opencv[-_](python|contrib[-_]python)\s*([;<>=!].*)?$' \
         > /tmp/req.txt || true; \
       [ -s /tmp/req.txt ] && pip install -r /tmp/req.txt || true; \
     done
+
+# facebook/sam2 is a `git+` line in ComfyUI-Impact-Pack's requirements, and the
+# loop above strips git+ deliberately. Without it Impact Pack boots with
+# "The SAM2 functionality is unavailable". Installed with --no-deps and its
+# real deps named explicitly: hydra-core pins antlr4-python3-runtime==4.9.*,
+# and letting pip take the newest (4.13.2) yields
+#   Exception: Could not deserialize ATN with version 3 (expected 4)
+# at import. omegaconf is NOT listed here: the image already has it, and adding
+# a second copy is how a working one gets shadowed.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-deps "git+https://github.com/facebookresearch/sam2" \
+ && pip install --no-deps hydra-core "antlr4-python3-runtime==4.9.3" iopath portalocker \
+ && python -c "from sam2.build_sam import build_sam2; print('sam2 ok')"
+
 
 # Node packs pin onnxruntime / onnxruntime-gpu from PyPI in their requirements,
 # which clobbers the CUDA-12 build installed above. Reassert it last.
@@ -186,7 +201,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
-COPY src/verify_imports.py src/check_ort_cuda.sh /opt/bin/
+COPY src/verify_imports.py src/check_ort_cuda.sh src/check_node_packs.py /opt/bin/
 
 # Every pipeline the image exists to run is asserted here. The first version of
 # this layer checked only torch/ort/cv2/ffmpeg and therefore passed a build in
@@ -205,7 +220,12 @@ RUN set -eux; \
     cd /opt/dfl && python main.py --help > /tmp/dfl.txt; \
     grep -q exportdfm /tmp/dfl.txt; grep -q train /tmp/dfl.txt; \
     echo "dfl main.py ok (train + exportdfm present)"; \
-    cd /opt/comfyui && python -c "import folder_paths; print('comfyui importable')"
+    cd /opt/comfyui && python -c "import folder_paths; print('comfyui importable')"; \
+    python /opt/bin/check_node_packs.py /tmp/node_packs.txt /opt/comfyui/custom_nodes; \
+    python -c "import ultralytics, segment_anything, piexif, dill; print('impact pack deps ok')"; \
+    python -c "from sam2.build_sam import build_sam2; print('sam2 ok')"; \
+    python -c "import importlib.util as u; assert u.find_spec('nvvfx'), 'nvidia-vfx missing'; print('nvvfx present')"; \
+    python -c "import omegaconf, hydra; print('omegaconf', omegaconf.__version__, '+ hydra ok')"
 
 COPY src/start.sh src/volume_init.sh /opt/bin/
 RUN chmod +x /opt/bin/start.sh /opt/bin/volume_init.sh

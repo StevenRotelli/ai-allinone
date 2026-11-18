@@ -25,3 +25,34 @@ https://github.com/Hearmeman24/ComfyUI-QwenImageRefPack.git
 https://github.com/Hearmeman24/ComfyUI-OpenRouter-Simple.git
 https://github.com/MoonGoblinDev/Civicomfy.git
 https://github.com/hayden-cn/ComfyUI-Model-Manager.git
+
+# --- added 2026-11-18 -------------------------------------------------------
+# Detailing / segmentation. Impact Pack also wants facebook/sam2, which is a
+# git+ line its requirements.txt carries and the Dockerfile's dep loop strips;
+# the Dockerfile installs it explicitly after this list.
+https://github.com/ltdrdata/ComfyUI-Impact-Pack.git
+https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git
+# Video upscaling. Verified in-process: this pack honours extra_model_paths and
+# matches the folder key case-insensitively, so models/SEEDVR2 + the `seedvr2`
+# yaml key is enough, no symlink.
+https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler.git
+# NVIDIA Video Effects. Its README says "RTX GPU" and cu130+, but that is the
+# WINDOWS SDK: NVIDIA's Linux VFX SDK supports A100/H100, and nvidia-vfx ships
+# a cp312-abi3-manylinux wheel. Verified end-to-end on an H100 on cu128 -
+# VideoSuperRes upscaled 480x270 -> 960x540 in 4 ms.
+https://github.com/Comfy-Org/ComfyUI_Nvidia_VFX_Nodes.git
+# Packs the workflows on the volume actually reference. Counts are workflows
+# unblocked, measured by tools/nodecheck2.py on 2026-11-18.
+https://github.com/IAMCCS/IAMCCS-nodes.git
+https://github.com/M1kep/ComfyLiterals.git
+https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git
+https://github.com/Lightricks/ComfyUI-LTXVideo.git
+https://github.com/chflame163/ComfyUI_LayerStyle.git
+https://github.com/Conor-Collins/ComfyUI-CoCoTools_IO.git
+https://github.com/IuvenisSapiens/ComfyUI_Qwen3-VL-Instruct.git
+https://github.com/lrzjason/Comfyui-QwenEditUtils.git
+https://github.com/ltdrdata/was-node-suite-comfyui.git
+https://github.com/cmeka/ComfyUI-WanMoEScheduler.git
+https://github.com/alisson-anjos/ComfyUI-BFSNodes.git
+https://github.com/malkuthro/ComfyUI-Koolook.git
+https://github.com/exportAnything/ComfyUI-LTX-Director-Motion-Brush.git
