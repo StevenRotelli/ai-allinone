@@ -16,6 +16,7 @@ ARG TORCH=2.8.0
 ARG TORCHVISION=0.23.0
 ARG TORCHAUDIO=2.8.0
 ARG CUDA_VARIANT=cu128
+ARG OPENCV_VERSION=5.0.0.93
 ARG COMFYUI_REF=master
 ARG FACEFUSION_REF=7247081
 ARG DFL_REF=a9f29b7
@@ -133,6 +134,25 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && python -c "from sam2.build_sam import build_sam2; print('sam2 ok')"
 
 
+# Same story as onnxruntime below, but worse because no requirements filter can
+# catch it: opencv arrives as a TRANSITIVE dependency. ultralytics, scenedetect,
+# pixeloe, transparent-background and mediapipe each require opencv-python or
+# opencv-contrib-python as a dep of their own, so stripping opencv lines out of
+# every requirements.txt (as the loop above does) still ends with pip installing
+# the Qt5 GUI build over the headless one this image chose.
+#
+# Observed on the 2026-11-18 build: opencv-python 5.1.0.95 AND
+# opencv-contrib-python 5.1.0.95 AND opencv-python-headless 5.0.0.93 all
+# installed, with `cv2.getBuildInformation()` reporting `GUI: QT5`. Three
+# packages fighting over one `cv2`, and the GUI build winning on a headless box.
+#
+# Resolve to exactly ONE provider. opencv-contrib-python-headless is the strict
+# superset: main modules + contrib (mediapipe wants contrib), no GUI toolkit.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip uninstall -y opencv-python opencv-contrib-python \
+                     opencv-python-headless opencv-contrib-python-headless || true; \
+    pip install --no-cache-dir "opencv-contrib-python-headless==${OPENCV_VERSION}"
+
 # Node packs pin onnxruntime / onnxruntime-gpu from PyPI in their requirements,
 # which clobbers the CUDA-12 build installed above. Reassert it last.
 RUN --mount=type=cache,target=/root/.cache/pip \
@@ -201,7 +221,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
-COPY src/verify_imports.py src/check_ort_cuda.sh src/check_node_packs.py /opt/bin/
+COPY src/verify_imports.py src/check_ort_cuda.sh src/check_node_packs.py src/check_opencv.py /opt/bin/
 
 # Every pipeline the image exists to run is asserted here. The first version of
 # this layer checked only torch/ort/cv2/ffmpeg and therefore passed a build in
@@ -213,6 +233,7 @@ RUN set -eux; \
     python -c "import onnxruntime as o, sys; assert o.__version__ == '${ORT_VERSION}', 'ort is %s, not the pinned CUDA-12 build' % o.__version__"; \
     bash /opt/bin/check_ort_cuda.sh; \
     python -c "import cv2, numpy, scipy, PIL, yaml; print('pipeline deps ok')"; \
+    python /opt/bin/check_opencv.py; \
     ffmpeg -version | head -1; \
     cd /opt/facefusion && python -c "import facefusion; print('facefusion import ok')"; \
     cd /opt/matanyone && python -c "import matanyone; print('matanyone import ok')"; \
