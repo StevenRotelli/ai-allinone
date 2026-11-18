@@ -72,3 +72,12 @@ https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git
 # workflow had it without; the workflow was renamed to match after confirming
 # both sides are ANY/IF_TRUE/IF_FALSE -> single `*` output.
 https://github.com/benjiyaya/Comfyui_InitialB_Util.git
+
+# The ORIGINAL LTX Director pack. ComfyUI-Koolook and
+# ComfyUI-LTX-Director-Motion-Brush both ship forks that deliberately RENAME
+# their nodes (LTXDirector__koolook, LTXDirectorMotionBrushV2*) to avoid
+# colliding with this one, so installing the original is what actually gives a
+# workflow the plain `LTXDirector`, `LTXDirectorCropGuides` and
+# `LTXDirectorGuide` names it asks for. Installing this beat editing the
+# workflow: the hotfix workflow needed zero changes afterwards.
+https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git
