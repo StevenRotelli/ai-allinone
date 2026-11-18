@@ -60,10 +60,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # which that non-recursive listdir cannot see, so surface the .ttf files one
 # level up as symlinks. Costs nothing and makes the node work as written.
 # Asserted in the verify stage by check_fonts.py.
+# NB: `-not -path '/usr/share/fonts/truetype/*.ttf'` does NOT work here, and the
+# first attempt shipped exactly that. In find(1), `*` in -path matches `/` too,
+# so that pattern also matches truetype/dejavu/DejaVuSans.ttf and excluded every
+# font - the layer ran in 0.1s and linked nothing. Compare the parent directory
+# explicitly instead.
 RUN set -eux; \
     mkdir -p /usr/share/fonts/truetype; \
-    find /usr/share/fonts -name '*.ttf' -not -path '/usr/share/fonts/truetype/*.ttf' \
-      -exec sh -c 'for f; do ln -sf "$f" "/usr/share/fonts/truetype/$(basename "$f")"; done' _ {} +
+    find /usr/share/fonts -name '*.ttf' -exec sh -c 'for f; do \
+      d=$(dirname "$f"); \
+      [ "$d" = /usr/share/fonts/truetype ] && continue; \
+      ln -sf "$f" "/usr/share/fonts/truetype/$(basename "$f")"; \
+    done' _ {} +
 
 # ffmpeg: a STATIC build, never apt's.
 # apt on 22.04/24.04 gives ffmpeg 4.4.2, which renders silently-black video that
