@@ -56,3 +56,19 @@ https://github.com/cmeka/ComfyUI-WanMoEScheduler.git
 https://github.com/alisson-anjos/ComfyUI-BFSNodes.git
 https://github.com/malkuthro/ComfyUI-Koolook.git
 https://github.com/exportAnything/ComfyUI-LTX-Director-Motion-Brush.git
+
+# --- added 2026-11-18 (second pass): packs the workflows reference indirectly --
+# IAMCCS-nodes does not DEFINE these - it looks them up with
+# NODE_CLASS_MAPPINGS.get() and errors "requires the installed node". Its own
+# message names the first one: "ComfyUI-MiniMaxH3Mod Load/Apply nodes are
+# unavailable". Supplies all six MiniMaxH3RefMod* nodes (Apply, Loader, Save,
+# Extract, FolderLoader, AudioExtract) across 4 workflows.
+https://github.com/Luisacaotica/ComfyUI-MiniMaxH3Mod.git
+# MinimaxH3LatentUpscaler3D, wanted by 6 MiniMax upscaling workflows. IAMCCS
+# vendors a copy under vendor/ but never registers it.
+https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler.git
+# "If ANY return A else B- 🔬", used inside a subgraph of the Wan2.2 SVI 4-pass
+# workflow. NB the pack registers the name WITH a space before the emoji and the
+# workflow had it without; the workflow was renamed to match after confirming
+# both sides are ANY/IF_TRUE/IF_FALSE -> single `*` output.
+https://github.com/benjiyaya/Comfyui_InitialB_Util.git
