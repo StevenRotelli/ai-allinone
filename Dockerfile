@@ -134,24 +134,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
  && python -c "from sam2.build_sam import build_sam2; print('sam2 ok')"
 
 
-# Same story as onnxruntime below, but worse because no requirements filter can
-# catch it: opencv arrives as a TRANSITIVE dependency. ultralytics, scenedetect,
-# pixeloe, transparent-background and mediapipe each require opencv-python or
-# opencv-contrib-python as a dep of their own, so stripping opencv lines out of
-# every requirements.txt (as the loop above does) still ends with pip installing
-# the Qt5 GUI build over the headless one this image chose.
-#
-# Observed on the 2026-11-18 build: opencv-python 5.1.0.95 AND
-# opencv-contrib-python 5.1.0.95 AND opencv-python-headless 5.0.0.93 all
-# installed, with `cv2.getBuildInformation()` reporting `GUI: QT5`. Three
-# packages fighting over one `cv2`, and the GUI build winning on a headless box.
-#
-# Resolve to exactly ONE provider. opencv-contrib-python-headless is the strict
-# superset: main modules + contrib (mediapipe wants contrib), no GUI toolkit.
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip uninstall -y opencv-python opencv-contrib-python \
-                     opencv-python-headless opencv-contrib-python-headless || true; \
-    pip install --no-cache-dir "opencv-contrib-python-headless==${OPENCV_VERSION}"
 
 # Node packs pin onnxruntime / onnxruntime-gpu from PyPI in their requirements,
 # which clobbers the CUDA-12 build installed above. Reassert it last.
@@ -218,6 +200,34 @@ RUN git clone https://github.com/Cioscos/DeepFaceLab-Revamped.git /opt/dfl \
     && git rev-parse HEAD > /dfl-ref.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     set -eux; cd /opt/dfl; pip install -r requirements/base.txt
+
+# Same story as the onnxruntime reassert above, but worse, because no
+# requirements filter can catch this one: opencv arrives as a TRANSITIVE
+# dependency. ultralytics, scenedetect, pixeloe, transparent-background and
+# mediapipe each require opencv-python or opencv-contrib-python as a dep of
+# their own, so stripping opencv lines out of every requirements.txt (as the
+# node-pack loop does) still ends with pip installing the Qt5 GUI build over
+# the headless one this image chose.
+#
+# Observed on the 2026-11-18 build: opencv-python 5.1.0.95 AND
+# opencv-contrib-python 5.1.0.95 AND opencv-python-headless 5.0.0.93 all
+# installed, with `cv2.getBuildInformation()` reporting `GUI: QT5`. Three
+# packages fighting over one `cv2`, and the GUI build winning on a headless box.
+#
+# Resolve to exactly ONE provider. opencv-contrib-python-headless is the strict
+# superset: main modules + contrib (mediapipe wants contrib), no GUI toolkit.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip uninstall -y opencv-python opencv-contrib-python \
+                     opencv-python-headless opencv-contrib-python-headless || true; \
+    pip install --no-cache-dir "opencv-contrib-python-headless==${OPENCV_VERSION}"
+
+# Placement matters and the first attempt got it wrong: this sat straight after
+# the node-pack loop, and facefusion and DeepFaceLab pip-install after that and
+# pulled opencv-python straight back in. check_opencv.py caught it and failed
+# the build with
+#   ['opencv-contrib-python-headless', 'opencv-python', 'opencv-python-headless']
+# which is exactly what it is for. A "reassert last" step has to actually be
+# last: this must stay below every other pip install in the file.
 
 # ------------------------------------------------------------------- verify
 # A build that quietly loses CUDA is worse than a failed build.
