@@ -81,3 +81,15 @@ https://github.com/benjiyaya/Comfyui_InitialB_Util.git
 # `LTXDirectorGuide` names it asks for. Installing this beat editing the
 # workflow: the hotfix workflow needed zero changes afterwards.
 https://github.com/WhatDreamsCost/WhatDreamsCost-ComfyUI.git
+
+# The two node types Phr00t's embedded build recipes need in order to open
+# without red nodes. They are BUILD tooling, not inference nodes:
+# ClipFP8ConverterNode quantises a text encoder to fp8 and LoraTagLoader pulls
+# <lora:name:weight> tags out of a prompt string. Added because the recipes are
+# the only record of how the Qwen-Rapid AIO checkpoints were merged, and a
+# graph with missing node types cannot be read end to end.
+# Resolved via ComfyUI-Manager's extension-node-map.json, which maps a node
+# name to the pack that registers it - searching the node names on GitHub had
+# previously sent me to the wrong repos.
+https://github.com/Shiba-2-shiba/ComfyUI_DiffusionModel_fp8_converter.git
+https://github.com/badjeff/comfyui_lora_tag_loader.git
